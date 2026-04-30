@@ -1312,6 +1312,27 @@ def test_noinline(mode, device):
         assert torch.equal(z, ref + x + y)
 
 
+@triton.jit
+def tensor_return_inner():
+    if tl.program_id(0) == 0:
+        return tl.arange(0, 16)
+    else:
+        return tl.arange(0, 16) * 2
+
+
+@triton.jit
+def tensor_return_outer(x, BLOCK: tl.constexpr):
+    if tl.program_id(0) < 2:
+        tl.atomic_add(x + tl.arange(0, BLOCK), tensor_return_inner())
+
+
+@pytest.mark.interpreter
+def test_return_tensor(device):
+    x = torch.zeros(16, device=device)
+    tensor_return_outer[(3, )](x, x.numel())
+    assert torch.equal(x, torch.arange(x.numel(), device=device) * 3)
+
+
 # ---------------
 # test atomics
 # ---------------
